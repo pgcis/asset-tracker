@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PGCIS Asset Registry</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --blue:        #2e4387;
+            --blue-light:  #3d5aab;
+            --text:        #111827;
+            --muted:       #6b7280;
+            --bg:          #f3f4f6;
+            --card:        #ffffff;
+            --border:      #e5e7eb;
+            --green:       #10b981;
+            --yellow:      #f59e0b;
+            --red:         #ef4444;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+               background: var(--bg); color: var(--text); min-height: 100vh; }
+
+        /* Header */
+        .hdr { background: var(--blue); color: #fff; padding: 14px 18px;
+               display: flex; justify-content: space-between; align-items: center; }
+        .hdr-title { font-size: 16px; font-weight: 700; letter-spacing: .02em; }
+        .hdr-sub { font-size: 11px; opacity: .7; margin-top: 1px; }
+        .hdr-badge { background: rgba(255,255,255,.18); padding: 5px 12px;
+                     border-radius: 20px; font-size: 13px; font-weight: 600;
+                     font-family: monospace; letter-spacing: .05em; white-space: nowrap; }
+
+        /* Layout */
+        .wrap { max-width: 580px; margin: 0 auto; padding: 18px 14px 40px; }
+
+        /* Cards */
+        .card { background: var(--card); border: 1px solid var(--border);
+                border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+        .card-title { font-size: 11px; font-weight: 700; text-transform: uppercase;
+                      letter-spacing: .07em; color: var(--muted); margin-bottom: 12px; }
+
+        /* Field rows */
+        .row { display: flex; justify-content: space-between; align-items: flex-start;
+               padding: 9px 0; border-bottom: 1px solid var(--border); gap: 12px; }
+        .row:last-child { border-bottom: none; }
+        .row-label { font-size: 13px; color: var(--muted); flex-shrink: 0; }
+        .row-val { font-size: 13px; font-weight: 500; text-align: right; word-break: break-word; }
+        .row-val.mono { font-family: monospace; }
+
+        /* Status badges */
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 20px;
+                 font-size: 12px; font-weight: 600; }
+        .badge-available  { background: #d1fae5; color: #065f46; }
+        .badge-checked-out{ background: #fef3c7; color: #92400e; }
+        .badge-in-field   { background: #dbeafe; color: #1e40af; }
+        .badge-in-repair  { background: #fee2e2; color: #991b1b; }
+
+        /* Alerts */
+        .alert { padding: 11px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
+        .alert-info    { background: #dbeafe; color: #1e40af; }
+        .alert-success { background: #d1fae5; color: #065f46; }
+        .alert-warn    { background: #fef3c7; color: #92400e; }
+        .alert-error   { background: #fee2e2; color: #991b1b; }
+
+        /* Buttons */
+        .btn { display: block; width: 100%; padding: 13px; border: none; border-radius: 8px;
+               font-size: 15px; font-weight: 600; cursor: pointer; text-align: center;
+               transition: opacity .15s; }
+        .btn:hover { opacity: .88; }
+        .btn:disabled { opacity: .5; cursor: not-allowed; }
+        .btn-primary  { background: var(--blue); color: #fff; }
+        .btn-success  { background: var(--green); color: #fff; }
+        .btn-ghost    { background: transparent; border: 2px solid var(--blue);
+                        color: var(--blue); padding: 11px; }
+        .btn-stack { display: flex; flex-direction: column; gap: 10px; }
+
+        /* Forms */
+        .fg { margin-bottom: 14px; }
+        .fg:last-child { margin-bottom: 0; }
+        label { display: block; font-size: 12px; font-weight: 600; color: var(--muted);
+                margin-bottom: 5px; }
+        label .req { color: var(--red); }
+        input, select, textarea {
+            width: 100%; padding: 10px 12px; border: 1px solid var(--border);
+            border-radius: 8px; font-size: 14px; background: #fff; color: var(--text);
+            appearance: none; }
+        input:focus, select:focus, textarea:focus {
+            outline: none; border-color: var(--blue);
+            box-shadow: 0 0 0 3px rgba(46,67,135,.1); }
+        textarea { resize: vertical; min-height: 72px; }
+        .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+        /* Spinner */
+        .spin-wrap { text-align: center; padding: 60px 20px; color: var(--muted); }
+        .spinner { display: inline-block; width: 30px; height: 30px;
+                   border: 3px solid var(--border); border-top-color: var(--blue);
+                   border-radius: 50%; animation: spin .7s linear infinite; margin-bottom: 10px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* New-asset hero */
+        .hero { text-align: center; padding: 18px 0 6px; }
+        .hero-id { font-size: 26px; font-weight: 700; color: var(--blue);
+                   font-family: monospace; margin: 8px 0; letter-spacing: .04em; }
+        .hero-sub { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+
+        /* History */
+        .hist-item { padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .hist-item:last-child { border-bottom: none; }
+        .hist-who { font-weight: 600; }
+        .hist-when { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+        /* Search */
+        .search-wrap { text-align: center; padding-top: 30px; }
+        .search-logo { font-size: 13px; font-weight: 700; color: var(--blue);
+                       letter-spacing: .08em; margin-bottom: 6px; }
+        .search-tagline { font-size: 12px; color: var(--muted); margin-bottom: 20px; }
+
+        /* Footer */
+        .foot { text-align: center; font-size: 11px; color: var(--muted); margin-top: 18px; }
+
+        /* Lost / found screen */
+        .lost-screen { max-width: 400px; margin: 36px auto; padding: 0 18px; text-align: center; }
+        .lost-mark { width: 60px; height: 60px; background: var(--blue); border-radius: 50%;
+                     display: flex; align-items: center; justify-content: center;
+                     margin: 0 auto 16px; }
+        .lost-company { font-size: 11px; font-weight: 700; letter-spacing: .12em;
+                        color: var(--muted); margin-bottom: 6px; text-transform: uppercase; }
+        .lost-headline { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+        .lost-sub { font-size: 14px; color: var(--muted); line-height: 1.55; margin-bottom: 22px; }
+        .contact-card { background: var(--card); border: 1px solid var(--border);
+                        border-radius: 10px; padding: 16px; text-align: left; margin-bottom: 20px; }
+        .contact-row { display: flex; align-items: baseline; gap: 10px; padding: 8px 0;
+                       border-bottom: 1px solid var(--border); font-size: 14px; }
+        .contact-row:last-child { border-bottom: none; }
+        .contact-lbl { font-size: 11px; font-weight: 700; color: var(--muted); width: 56px;
+                       flex-shrink: 0; text-transform: uppercase; letter-spacing: .05em; }
+        .contact-val { font-weight: 500; }
+        .emp-signin { font-size: 12px; color: var(--muted); margin-top: 14px; }
+        .emp-signin button { background: none; border: none; color: var(--blue); cursor: pointer;
+                             font-size: 12px; font-weight: 600; text-decoration: underline; padding: 0; }
+
+        /* Locked-field display inside update form */
+        .locked-row { display: flex; align-items: center; justify-content: space-between;
+                      padding: 9px 0; border-bottom: 1px solid var(--border); }
+        .locked-row:last-of-type { border-bottom: none; }
+        /* Admin hardware edit card */
+        .admin-hw-card { border-color: var(--yellow) !important; background: #fffdf0; }
+        .locked-lbl { font-size: 12px; font-weight: 600; color: var(--muted); }
+        .locked-val { font-size: 13px; font-weight: 500; }
+        .lock-pill { font-size: 10px; font-weight: 700; color: var(--muted); background: var(--border);
+                     padding: 2px 7px; border-radius: 10px; margin-left: 8px; letter-spacing: .04em; }
+
+        /* Signed-in user badge in header */
+        .hdr-right { display: flex; align-items: center; gap: 10px; }
+        .hdr-user { font-size: 11px; text-align: right; opacity: .85; }
+        .hdr-signout { background: rgba(255,255,255,.18); border: none; color: #fff;
+                       font-size: 11px; padding: 3px 9px; border-radius: 10px; cursor: pointer;
+                       margin-top: 3px; display: block; width: 100%; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="spin-wrap"><div class="spinner"></div><br>Loading...</div>
+</div>
+
+<script>
+// ================================================================
+//  CONFIGURATION — fill in your Supabase project details
+// ================================================================
+const SUPABASE_URL      = 'https://YOUR_PROJECT_REF.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE';
+
+// Lost / found device contact info (shown to anyone without a PGCIS login)
+const CONTACT_PHONE   = '(512) 000-0000';      // UPDATE: PGCIS main phone
+const CONTACT_EMAIL   = 'info@pgcis.com';       // UPDATE: contact email
+const CONTACT_ADDRESS = 'Austin, TX';            // UPDATE: office / return address
+
+// Only Google accounts ending with this domain get past the auth gate
+const PGCIS_DOMAIN = '@pgcis.com';
+
+// Admins can edit locked hardware identity fields (type, make, model).
+// Keep this list in sync with the admin emails in schema.sql.
+const ADMIN_EMAILS = [
+    'tylerd@pgcis.com',
+    'benton@pgcis.com',
+    'erik@pgcis.com',
+];
+// ================================================================
+
+const { createClient } = window.supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Holds the last loaded asset so forms can reference it without
+// injecting raw JSON into onclick attributes (XSS-safe).
+let _asset   = null;
+let _session = null;
+let _user    = null;
+
+function isAdmin() {
+    return _user && ADMIN_EMAILS.includes(_user.email.toLowerCase());
+}
+
+// ────────────────────────────────────────────────────────────────
+// URL helpers
+// ────────────────────────────────────────────────────────────────
+function getIdFromUrl() {
+    const p = new URLSearchParams(window.location.search);
+    const id = p.get('id') || p.get('asset');
+    return id ? id.toUpperCase().trim() : null;
+}
+
+function fmtDate(v) {
+    if (!v) return '—';
+    return new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function fmtDateTime(v) {
+    if (!v) return '—';
+    return new Date(v).toLocaleString('en-US', { month: 'short', day: 'numeric',
+        year: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function statusBadge(s) {
+    const map = {
+        'available':   ['Available',    'available'],
+        'checked-out': ['Checked Out',  'checked-out'],
+        'in-field':    ['In Field',     'in-field'],
+        'in-repair':   ['In Repair',    'in-repair'],
+    };
+    const [label, cls] = map[s] || ['Available', 'available'];
+    return `<span class="badge badge-${cls}">${label}</span>`;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Render helpers
+// ────────────────────────────────────────────────────────────────
+function render(html) { document.getElementById('app').innerHTML = html; }
+
+function setAlert(msg, type) {
+    const el = document.getElementById('form-alert');
+    if (el) el.innerHTML = msg ? `<div class="alert alert-${type}">${msg}</div>` : '';
+}
+
+function header(assetId) {
+    const userBlock = _user ? `
+        <div class="hdr-user">
+            ${_user.email}
+            <button class="hdr-signout" onclick="signOut()">Sign Out</button>
+        </div>` : '';
+    return `<div class="hdr">
+        <div><div class="hdr-title">PGCIS Asset Registry</div>
+             <div class="hdr-sub">PACHYDERM GLOBAL</div></div>
+        <div class="hdr-right">
+            ${assetId ? `<div class="hdr-badge">${assetId}</div>` : ''}
+            ${userBlock}
+        </div>
+    </div>`;
+}
+
+// ────────────────────────────────────────────────────────────────
+// Views
+// ────────────────────────────────────────────────────────────────
+function showSpinner() {
+    render(`<div class="spin-wrap"><div class="spinner"></div><br>Loading asset...</div>`);
+}
+
+function showAsset(asset) {
+    _asset = asset;
+    const co = asset.checkout_status || 'available';
+    const isOut = co === 'checked-out' || co === 'in-field';
+
+    render(`
+        ${header(asset.asset_id)}
+        <div class="wrap">
+
+            <div class="card">
+                <div class="row">
+                    <span class="row-label">Status</span>
+                    <span class="row-val">${statusBadge(co)}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Type</span>
+                    <span class="row-val">${asset.asset_type || '—'}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Make / Model</span>
+                    <span class="row-val">${[asset.make, asset.model].filter(Boolean).join(' ') || '—'}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Serial Number</span>
+                    <span class="row-val mono">${asset.serial_number || '—'}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Assigned To</span>
+                    <span class="row-val">${asset.assigned_to || 'Unassigned'}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Home Location</span>
+                    <span class="row-val">${asset.home_location || '—'}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Condition</span>
+                    <span class="row-val">${asset.condition || '—'}</span>
+                </div>
+                ${asset.description ? `
+                <div class="row">
+                    <span class="row-label">Description</span>
+                    <span class="row-val">${asset.description}</span>
+                </div>` : ''}
+            </div>
+
+            ${isOut ? `
+            <div class="card">
+                <div class="card-title">Currently Checked Out</div>
+                <div class="row">
+                    <span class="row-label">Checked Out To</span>
+                    <span class="row-val">${asset.checked_out_to || '—'}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Checkout Date</span>
+                    <span class="row-val">${fmtDateTime(asset.checkout_date)}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Site / Project</span>
+                    <span class="row-val">${asset.checkout_site || '—'}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Expected Return</span>
+                    <span class="row-val">${fmtDate(asset.expected_return)}</span>
+                </div>
+                ${asset.last_checkout_notes ? `
+                <div class="row">
+                    <span class="row-label">Notes</span>
+                    <span class="row-val">${asset.last_checkout_notes}</span>
+                </div>` : ''}
+            </div>` : ''}
+
+            ${asset.calibration_required ? `
+            <div class="card">
+                <div class="card-title">Calibration</div>
+                <div class="row">
+                    <span class="row-label">Last Calibrated</span>
+                    <span class="row-val">${fmtDate(asset.last_calibration_date)}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Next Due</span>
+                    <span class="row-val">${fmtDate(asset.next_calibration_date)}</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Provider</span>
+                    <span class="row-val">${asset.calibration_provider || '—'}</span>
+                </div>
+            </div>` : ''}
+
+            ${asset.notes ? `
+            <div class="card">
+                <div class="card-title">Notes</div>
+                <p style="font-size:13px;color:var(--muted);white-space:pre-wrap">${asset.notes}</p>
+            </div>` : ''}
+
+            <div class="btn-stack">
+                ${isOut ? `
+                    <button class="btn btn-success" onclick="viewCheckin()">Check In This Equipment</button>
+                    <button class="btn btn-primary" onclick="viewTransfer()">Transfer to Another Person / Site</button>
+                ` : `
+                    <button class="btn btn-primary" onclick="viewCheckout()">Check Out This Equipment</button>
+                `}
+                <button class="btn btn-ghost" onclick="viewReassign()">Reassign / Unassign</button>
+                <button class="btn btn-ghost" onclick="viewUpdate()">Update Asset Info</button>
+            </div>
+
+            <div class="foot">
+                Registered ${fmtDate(asset.created_at)} by ${asset.created_by || 'unknown'}
+            </div>
+        </div>
+    `);
+}
+
+function showRegisterForm(assetId) {
+    render(`
+        ${header(assetId)}
+        <div class="wrap">
+            <div class="hero">
+                <div style="font-size:13px;color:var(--muted)">Unregistered tag</div>
+                <div class="hero-id">${assetId}</div>
+                <div class="hero-sub">Fill out the form below to register this equipment.</div>
+            </div>
+
+            <div id="form-alert"></div>
+
+            <form id="reg-form" onsubmit="submitRegister(event)">
+                <div class="card">
+                    <div class="card-title">Equipment Info</div>
+
+                    <div class="fg">
+                        <label>Asset Type <span class="req">*</span></label>
+                        <select name="asset_type" required>
+                            <option value="">Select type...</option>
+                            <optgroup label="IT Equipment">
+                                <option>Laptop</option>
+                                <option>Desktop</option>
+                                <option>Tablet</option>
+                                <option>Phone</option>
+                                <option>Monitor</option>
+                                <option>Docking Station</option>
+                                <option>Network Equipment</option>
+                                <option>Other IT</option>
+                            </optgroup>
+                            <optgroup label="Test Equipment">
+                                <option>Power Quality Meter (PQM)</option>
+                                <option>IR Camera / Thermal Imager</option>
+                                <option>Clamp Meter</option>
+                                <option>Multimeter</option>
+                                <option>Oscilloscope</option>
+                                <option>Load Bank</option>
+                                <option>Data Logger</option>
+                                <option>Phase Rotation Tester</option>
+                                <option>Insulation Tester / Megger</option>
+                                <option>Current Transformer (CT)</option>
+                                <option>Lux Meter</option>
+                                <option>Other Test Equipment</option>
+                            </optgroup>
+                            <optgroup label="Tools">
+                                <option>Power Tool</option>
+                                <option>Hand Tool Set</option>
+                                <option>Arc Flash / PPE Kit</option>
+                                <option>Ladder</option>
+                                <option>Other Tool</option>
+                            </optgroup>
+                            <optgroup label="Other">
+                                <option>Camera / Video Equipment</option>
+                                <option>Communication Device (Radio)</option>
+                                <option>Vehicle</option>
+                                <option>Other</option>
+                            </optgroup>
+                        </select>
+                    </div>
+
+                    <div class="row2">
+                        <div class="fg">
+                            <label>Make / Brand <span class="req">*</span></label>
+                            <input name="make" placeholder="e.g. Apple, Fluke" required>
+                        </div>
+                        <div class="fg">
+                            <label>Model <span class="req">*</span></label>
+                            <input name="model" placeholder="e.g. MacBook Pro 14&quot;" required>
+                        </div>
+                    </div>
+
+                    <div class="fg">
+                        <label>Serial Number</label>
+                        <input name="serial_number" placeholder="Device serial number" style="font-family:monospace">
+                    </div>
+
+                    <div class="fg">
+                        <label>Description</label>
+                        <input name="description" placeholder="e.g. 16GB RAM, Space Gray, charger included">
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Assignment &amp; Location</div>
+
+                    <div class="row2">
+                        <div class="fg">
+                            <label>Assigned To</label>
+                            <input name="assigned_to" placeholder="Person's name">
+                        </div>
+                        <div class="fg">
+                            <label>Home Location <span class="req">*</span></label>
+                            <select name="home_location" required>
+                                <option value="">Select...</option>
+                                <option>Austin Office</option>
+                                <option>Tyler's Home</option>
+                                <option>Benton's Home</option>
+                                <option>Erik's Home</option>
+                                <option>Field Storage</option>
+                                <option>CoreSci Denton Site</option>
+                                <option>Buckley AFB Site</option>
+                                <option>Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row2">
+                        <div class="fg">
+                            <label>Purchase Date</label>
+                            <input type="date" name="purchase_date">
+                        </div>
+                        <div class="fg">
+                            <label>Condition <span class="req">*</span></label>
+                            <select name="condition" required>
+                                <option value="">Select...</option>
+                                <option value="new">New</option>
+                                <option value="good">Good</option>
+                                <option value="fair">Fair</option>
+                                <option value="poor">Poor</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="fg">
+                        <label>Vendor / Purchased From</label>
+                        <input name="vendor" placeholder="e.g. Apple, B&amp;H, Amazon">
+                    </div>
+
+                    <div class="fg">
+                        <label>Purchase Price ($)</label>
+                        <input type="number" name="purchase_price" step="0.01" min="0" placeholder="0.00">
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Calibration (Test Equipment Only)</div>
+                    <div class="fg">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;color:var(--text)">
+                            <input type="checkbox" name="calibration_required" id="cal-chk"
+                                   onchange="document.getElementById('cal-fields').style.display=this.checked?'block':'none'"
+                                   style="width:auto;margin:0">
+                            This equipment requires periodic calibration
+                        </label>
+                    </div>
+                    <div id="cal-fields" style="display:none">
+                        <div class="row2">
+                            <div class="fg">
+                                <label>Last Calibrated</label>
+                                <input type="date" name="last_calibration_date">
+                            </div>
+                            <div class="fg">
+                                <label>Next Due</label>
+                                <input type="date" name="next_calibration_date">
+                            </div>
+                        </div>
+                        <div class="fg">
+                            <label>Calibration Provider</label>
+                            <input name="calibration_provider" placeholder="e.g. Fluke Calibration Services">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="fg">
+                        <label>Notes</label>
+                        <textarea name="notes" placeholder="Accessories, special handling, known issues..."></textarea>
+                    </div>
+                    <div class="fg">
+                        <label>Registered By <span class="req">*</span></label>
+                        <input name="created_by" placeholder="Your name" required>
+                    </div>
+                </div>
+
+                <input type="hidden" name="_asset_id" value="${assetId}">
+                <button type="submit" class="btn btn-primary" id="reg-submit">Register ${assetId}</button>
+            </form>
+        </div>
+    `);
+}
+
+function showCheckoutForm() {
+    if (!_asset) return;
+    const today = new Date().toISOString().slice(0,10);
+    const nextWeek = new Date(Date.now() + 7*24*60*60*1000).toISOString().slice(0,10);
+
+    render(`
+        ${header(_asset.asset_id)}
+        <div class="wrap">
+            <div class="hero">
+                <div style="font-size:13px;color:var(--muted)">Checkout Form</div>
+                <div class="hero-id">${_asset.asset_id}</div>
+                <div class="hero-sub">${[_asset.make, _asset.model].filter(Boolean).join(' ')}</div>
+            </div>
+
+            <div id="form-alert"></div>
+
+            <form id="co-form" onsubmit="submitCheckout(event)">
+                <div class="card">
+                    <div class="fg">
+                        <label>Checking Out To <span class="req">*</span></label>
+                        <input name="checked_out_to" placeholder="Your full name" required>
+                    </div>
+                    <div class="fg">
+                        <label>Site / Project</label>
+                        <input name="checkout_site" placeholder="e.g. CoreSci Denton, Austin Office">
+                    </div>
+                    <div class="row2">
+                        <div class="fg">
+                            <label>Checkout Date</label>
+                            <input type="date" name="checkout_date" value="${today}">
+                        </div>
+                        <div class="fg">
+                            <label>Expected Return</label>
+                            <input type="date" name="expected_return" value="${nextWeek}">
+                        </div>
+                    </div>
+                    <div class="fg">
+                        <label>Notes</label>
+                        <textarea name="notes" placeholder="Purpose, site contact, special handling..."></textarea>
+                    </div>
+                </div>
+
+                <div class="btn-stack">
+                    <button type="submit" class="btn btn-primary" id="co-submit">Confirm Checkout</button>
+                    <button type="button" class="btn btn-ghost" onclick="loadAsset(_asset.asset_id)">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `);
+}
+
+function showCheckinForm() {
+    if (!_asset) return;
+
+    render(`
+        ${header(_asset.asset_id)}
+        <div class="wrap">
+            <div class="hero">
+                <div style="font-size:13px;color:var(--muted)">Check In</div>
+                <div class="hero-id">${_asset.asset_id}</div>
+                <div class="hero-sub">Checked out to: ${_asset.checked_out_to || '—'}</div>
+            </div>
+
+            <div id="form-alert"></div>
+
+            <form id="ci-form" onsubmit="submitCheckin(event)">
+                <div class="card">
+                    <div class="fg">
+                        <label>Returned By <span class="req">*</span></label>
+                        <input name="returned_by" placeholder="Your full name" required>
+                    </div>
+                    <div class="fg">
+                        <label>Returned To Location</label>
+                        <input name="return_location" placeholder="Where is this going back to?">
+                    </div>
+                    <div class="fg">
+                        <label>Condition on Return</label>
+                        <select name="condition">
+                            <option value="good">Good - No issues</option>
+                            <option value="fair">Fair - Minor wear</option>
+                            <option value="poor">Poor - Needs attention</option>
+                            <option value="damaged">Damaged - Needs repair</option>
+                        </select>
+                    </div>
+                    <div class="fg">
+                        <label>Notes</label>
+                        <textarea name="notes" placeholder="Issues found, usage notes, anything to flag..."></textarea>
+                    </div>
+                </div>
+
+                <div class="btn-stack">
+                    <button type="submit" class="btn btn-success" id="ci-submit">Confirm Check In</button>
+                    <button type="button" class="btn btn-ghost" onclick="loadAsset(_asset.asset_id)">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `);
+}
+
+function showUpdateForm() {
+    if (!_asset) return;
+    const a = _asset;
+
+    render(`
+        ${header(a.asset_id)}
+        <div class="wrap">
+            <div id="form-alert"></div>
+
+            <form id="upd-form" onsubmit="submitUpdate(event)">
+
+                <!-- Hardware identity: editable for admins, read-only for everyone else -->
+                ${isAdmin() ? `
+                <div class="card admin-hw-card">
+                    <div class="card-title">Hardware Identity
+                        <span style="background:#fef3c7;color:#92400e;font-size:10px;font-weight:700;
+                                     padding:2px 8px;border-radius:10px;margin-left:6px;vertical-align:middle">
+                            ADMIN EDIT
+                        </span>
+                    </div>
+                    <div class="fg">
+                        <label>Asset Type</label>
+                        <select name="asset_type">
+                            <optgroup label="IT Equipment">
+                                <option ${a.asset_type==='Laptop'              ?'selected':''}>Laptop</option>
+                                <option ${a.asset_type==='Desktop'             ?'selected':''}>Desktop</option>
+                                <option ${a.asset_type==='Tablet'              ?'selected':''}>Tablet</option>
+                                <option ${a.asset_type==='Phone'               ?'selected':''}>Phone</option>
+                                <option ${a.asset_type==='Monitor'             ?'selected':''}>Monitor</option>
+                                <option ${a.asset_type==='Docking Station'     ?'selected':''}>Docking Station</option>
+                                <option ${a.asset_type==='Network Equipment'   ?'selected':''}>Network Equipment</option>
+                                <option ${a.asset_type==='Other IT'            ?'selected':''}>Other IT</option>
+                            </optgroup>
+                            <optgroup label="Test Equipment">
+                                <option ${a.asset_type==='Power Quality Meter (PQM)'       ?'selected':''}>Power Quality Meter (PQM)</option>
+                                <option ${a.asset_type==='IR Camera / Thermal Imager'      ?'selected':''}>IR Camera / Thermal Imager</option>
+                                <option ${a.asset_type==='Clamp Meter'                     ?'selected':''}>Clamp Meter</option>
+                                <option ${a.asset_type==='Multimeter'                      ?'selected':''}>Multimeter</option>
+                                <option ${a.asset_type==='Oscilloscope'                    ?'selected':''}>Oscilloscope</option>
+                                <option ${a.asset_type==='Load Bank'                       ?'selected':''}>Load Bank</option>
+                                <option ${a.asset_type==='Data Logger'                     ?'selected':''}>Data Logger</option>
+                                <option ${a.asset_type==='Phase Rotation Tester'           ?'selected':''}>Phase Rotation Tester</option>
+                                <option ${a.asset_type==='Insulation Tester / Megger'      ?'selected':''}>Insulation Tester / Megger</option>
+                                <option ${a.asset_type==='Current Transformer (CT)'        ?'selected':''}>Current Transformer (CT)</option>
+                                <option ${a.asset_type==='Lux Meter'                       ?'selected':''}>Lux Meter</option>
+                                <option ${a.asset_type==='Other Test Equipment'            ?'selected':''}>Other Test Equipment</option>
+                            </optgroup>
+                            <optgroup label="Tools">
+                                <option ${a.asset_type==='Power Tool'          ?'selected':''}>Power Tool</option>
+                                <option ${a.asset_type==='Hand Tool Set'       ?'selected':''}>Hand Tool Set</option>
+                                <option ${a.asset_type==='Arc Flash / PPE Kit' ?'selected':''}>Arc Flash / PPE Kit</option>
+                                <option ${a.asset_type==='Ladder'              ?'selected':''}>Ladder</option>
+                                <option ${a.asset_type==='Other Tool'          ?'selected':''}>Other Tool</option>
+                            </optgroup>
+                            <optgroup label="Other">
+                                <option ${a.asset_type==='Camera / Video Equipment'        ?'selected':''}>Camera / Video Equipment</option>
+                                <option ${a.asset_type==='Communication Device (Radio)'    ?'selected':''}>Communication Device (Radio)</option>
+                                <option ${a.asset_type==='Vehicle'                         ?'selected':''}>Vehicle</option>
+                                <option ${a.asset_type==='Other'                           ?'selected':''}>Other</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div class="row2">
+                        <div class="fg">
+                            <label>Make</label>
+                            <input name="make" value="${a.make || ''}">
+                        </div>
+                        <div class="fg">
+                            <label>Model</label>
+                            <input name="model" value="${a.model || ''}">
+                        </div>
+                    </div>
+                    <p style="font-size:11px;color:#92400e;line-height:1.5;margin-top:4px">
+                        Admin correction only. The physical tag stays on the same device --
+                        use this to fix a registration mistake, not to reassign the tag.
+                    </p>
+                </div>
+                ` : `
+                <div class="card">
+                    <div class="card-title">Hardware Identity
+                        <span class="lock-pill" style="vertical-align:middle;margin-left:6px">LOCKED TO TAG</span>
+                    </div>
+                    <div class="locked-row">
+                        <span class="locked-lbl">Type</span>
+                        <span class="locked-val">${a.asset_type}<span class="lock-pill">locked</span></span>
+                    </div>
+                    <div class="locked-row">
+                        <span class="locked-lbl">Make</span>
+                        <span class="locked-val">${a.make || '—'}<span class="lock-pill">locked</span></span>
+                    </div>
+                    <div class="locked-row" style="border-bottom:none">
+                        <span class="locked-lbl">Model</span>
+                        <span class="locked-val">${a.model || '—'}<span class="lock-pill">locked</span></span>
+                    </div>
+                    <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5">
+                        Tag <strong>${a.asset_id}</strong> is permanently linked to this equipment.
+                        These fields cannot be changed. Contact an admin to correct a registration error.
+                    </p>
+                </div>
+                `}
+
+                <div class="card">
+                    <div class="card-title">Update Asset Info</div>
+
+                    <div class="fg">
+                        <label>Serial Number <span style="font-weight:400;font-size:11px">(correctable)</span></label>
+                        <input name="serial_number" value="${a.serial_number || ''}" style="font-family:monospace">
+                    </div>
+                    <div class="row2">
+                        <div class="fg">
+                            <label>Assigned To</label>
+                            <input name="assigned_to" value="${a.assigned_to || ''}">
+                        </div>
+                        <div class="fg">
+                            <label>Home Location</label>
+                            <input name="home_location" value="${a.home_location || ''}">
+                        </div>
+                    </div>
+                    <div class="fg">
+                        <label>Condition</label>
+                        <select name="condition">
+                            <option value="new"     ${a.condition==='new'     ?'selected':''}>New</option>
+                            <option value="good"    ${a.condition==='good'    ?'selected':''}>Good</option>
+                            <option value="fair"    ${a.condition==='fair'    ?'selected':''}>Fair</option>
+                            <option value="poor"    ${a.condition==='poor'    ?'selected':''}>Poor</option>
+                            <option value="damaged" ${a.condition==='damaged' ?'selected':''}>Damaged</option>
+                            <option value="retired" ${a.condition==='retired' ?'selected':''}>Retired</option>
+                        </select>
+                    </div>
+                    ${a.calibration_required ? `
+                    <div class="row2">
+                        <div class="fg">
+                            <label>Last Calibrated</label>
+                            <input type="date" name="last_calibration_date" value="${a.last_calibration_date || ''}">
+                        </div>
+                        <div class="fg">
+                            <label>Calibration Due</label>
+                            <input type="date" name="next_calibration_date" value="${a.next_calibration_date || ''}">
+                        </div>
+                    </div>` : ''}
+                    <div class="fg">
+                        <label>Notes</label>
+                        <textarea name="notes">${a.notes || ''}</textarea>
+                    </div>
+                    <div class="fg">
+                        <label>Updated By <span class="req">*</span></label>
+                        <input name="updated_by" placeholder="Your name" required>
+                    </div>
+                </div>
+
+                <div class="btn-stack">
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                    <button type="button" class="btn btn-ghost" onclick="loadAsset(_asset.asset_id)">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `);
+}
+
+function showReassignForm() {
+    if (!_asset) return;
+    const a = _asset;
+
+    render(`
+        ${header(a.asset_id)}
+        <div class="wrap">
+            <div class="hero">
+                <div style="font-size:13px;color:var(--muted)">Reassign / Unassign</div>
+                <div class="hero-id">${a.asset_id}</div>
+                <div class="hero-sub">${[a.make, a.model].filter(Boolean).join(' ')}</div>
+            </div>
+
+            <div class="alert alert-info">
+                Currently assigned to: <strong>${a.assigned_to || 'Nobody (unassigned)'}</strong>.
+                Enter a new name below to reassign, or clear the field to unassign.
+            </div>
+
+            <div id="form-alert"></div>
+
+            <form id="ra-form" onsubmit="submitReassign(event)">
+                <div class="card">
+                    <div class="fg">
+                        <label>Assign To</label>
+                        <input name="assigned_to" value="${a.assigned_to || ''}"
+                               placeholder="Enter name, or leave blank to unassign"
+                               id="ra-name-input">
+                    </div>
+                    <div class="fg">
+                        <label>New Home Location</label>
+                        <input name="home_location" value="${a.home_location || ''}"
+                               placeholder="Where will this equipment normally live?">
+                    </div>
+                    <div class="fg">
+                        <label>Reason for Change</label>
+                        <input name="reason" placeholder="e.g. Employee departure, new hire, role change">
+                    </div>
+                    <div class="fg">
+                        <label>Changed By <span class="req">*</span></label>
+                        <input name="changed_by" placeholder="Your name" required>
+                    </div>
+                </div>
+
+                <div class="btn-stack">
+                    <button type="submit" class="btn btn-primary" id="ra-submit">Save Assignment</button>
+                    <button type="button" class="btn btn-ghost" onclick="loadAsset(_asset.asset_id)">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `);
+}
+
+function showTransferForm() {
+    if (!_asset) return;
+    const a = _asset;
+    const today    = new Date().toISOString().slice(0,10);
+    const nextWeek = new Date(Date.now() + 7*24*60*60*1000).toISOString().slice(0,10);
+
+    render(`
+        ${header(a.asset_id)}
+        <div class="wrap">
+            <div class="hero">
+                <div style="font-size:13px;color:var(--muted)">Transfer Checkout</div>
+                <div class="hero-id">${a.asset_id}</div>
+                <div class="hero-sub">${[a.make, a.model].filter(Boolean).join(' ')}</div>
+            </div>
+
+            <div class="alert alert-warn">
+                Currently checked out to: <strong>${a.checked_out_to || '—'}</strong>
+                ${a.checkout_site ? ` at ${a.checkout_site}` : ''}.
+                This will close that checkout and open a new one immediately.
+            </div>
+
+            <div id="form-alert"></div>
+
+            <form id="tr-form" onsubmit="submitTransfer(event)">
+                <div class="card">
+                    <div class="fg">
+                        <label>Transfer To <span class="req">*</span></label>
+                        <input name="transfer_to" placeholder="New person's name" required>
+                    </div>
+                    <div class="fg">
+                        <label>New Site / Project</label>
+                        <input name="checkout_site" value="${a.checkout_site || ''}"
+                               placeholder="e.g. CoreSci Denton, Austin Office">
+                    </div>
+                    <div class="row2">
+                        <div class="fg">
+                            <label>Transfer Date</label>
+                            <input type="date" name="transfer_date" value="${today}">
+                        </div>
+                        <div class="fg">
+                            <label>Expected Return</label>
+                            <input type="date" name="expected_return" value="${nextWeek}">
+                        </div>
+                    </div>
+                    <div class="fg">
+                        <label>Notes</label>
+                        <textarea name="notes" placeholder="Reason for transfer, handoff details..."></textarea>
+                    </div>
+                </div>
+
+                <div class="btn-stack">
+                    <button type="submit" class="btn btn-primary" id="tr-submit">Confirm Transfer</button>
+                    <button type="button" class="btn btn-ghost" onclick="loadAsset(_asset.asset_id)">Cancel</button>
+                </div>
+            </form>
+        </div>
+    `);
+}
+
+function showSearch() {
+    render(`
+        ${header(null)}
+        <div class="wrap">
+            <div class="search-wrap">
+                <div class="search-logo">PGCIS ASSET REGISTRY</div>
+                <div class="search-tagline">Scan an asset QR code, or enter an asset ID below.</div>
+                <div class="card">
+                    <div class="fg">
+                        <input id="srch" placeholder="PGCIS-0001"
+                            style="text-transform:uppercase;letter-spacing:.05em;font-family:monospace;font-size:16px;text-align:center"
+                            onkeydown="if(event.key==='Enter')goSearch()">
+                    </div>
+                    <button class="btn btn-primary" onclick="goSearch()">Look Up Asset</button>
+                </div>
+            </div>
+            <div class="foot">PACHYDERM GLOBAL Critical Infrastructure Services</div>
+        </div>
+    `);
+}
+
+function showError(msg) {
+    render(`
+        ${header(null)}
+        <div class="wrap">
+            <div class="alert alert-error" style="margin-top:20px">${msg}</div>
+            <button class="btn btn-ghost" onclick="showSearch()">Back</button>
+        </div>
+    `);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Lost / found screen + auth
+// ────────────────────────────────────────────────────────────────
+function showLostDevice(assetId) {
+    // Inline SVG lock icon — no emoji (client-facing)
+    const lockIcon = `<svg width="26" height="26" viewBox="0 0 24 24" fill="none"
+        stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2"></rect>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>`;
+
+    render(`
+        <div class="hdr">
+            <div><div class="hdr-title">PGCIS Asset Registry</div>
+                 <div class="hdr-sub">PACHYDERM GLOBAL</div></div>
+        </div>
+        <div class="lost-screen">
+            <div class="lost-mark">${lockIcon}</div>
+            <div class="lost-company">PACHYDERM GLOBAL Critical Infrastructure Services</div>
+            <div class="lost-headline">This device belongs to PGCIS.</div>
+            <div class="lost-sub">
+                If you found this device, please use the contact information
+                below to arrange its return. Thank you.
+            </div>
+            <div class="contact-card">
+                <div class="contact-row">
+                    <span class="contact-lbl">Phone</span>
+                    <span class="contact-val">${CONTACT_PHONE}</span>
+                </div>
+                <div class="contact-row">
+                    <span class="contact-lbl">Email</span>
+                    <span class="contact-val">${CONTACT_EMAIL}</span>
+                </div>
+                <div class="contact-row">
+                    <span class="contact-lbl">Return to</span>
+                    <span class="contact-val">${CONTACT_ADDRESS}</span>
+                </div>
+            </div>
+            <div class="emp-signin">
+                PGCIS employee? <button onclick="signIn()">Sign in with Google</button>
+            </div>
+        </div>
+    `);
+}
+
+async function signIn() {
+    // Show spinner while OAuth redirect happens
+    render(`<div class="spin-wrap"><div class="spinner"></div><br>Signing in...</div>`);
+    const { error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+            redirectTo: window.location.href,   // preserves ?id= param through OAuth round-trip
+            queryParams: { hd: 'pgcis.com' }    // hints Google to show only PGCIS accounts
+        }
+    });
+    if (error) showError('Sign-in error: ' + error.message);
+}
+
+async function signOut() {
+    await sb.auth.signOut();
+    _session = null; _user = null;
+    showLostDevice(getIdFromUrl());
+}
+
+// ────────────────────────────────────────────────────────────────
+// Form helpers (button wrappers called from inline HTML)
+// ────────────────────────────────────────────────────────────────
+function viewCheckout()  { showCheckoutForm(); }
+function viewCheckin()   { showCheckinForm(); }
+function viewUpdate()    { showUpdateForm(); }
+function viewReassign()  { showReassignForm(); }
+function viewTransfer()  { showTransferForm(); }
+
+function goSearch() {
+    const v = document.getElementById('srch').value.trim().toUpperCase();
+    if (v) window.location.href = '?id=' + encodeURIComponent(v);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Data layer
+// ────────────────────────────────────────────────────────────────
+async function loadAsset(assetId) {
+    showSpinner();
+    const { data, error } = await sb
+        .from('asset_equipment')
+        .select('*')
+        .eq('asset_id', assetId)
+        .maybeSingle();
+
+    if (error) {
+        showError('Database error: ' + error.message);
+        return;
+    }
+
+    if (data) {
+        // Log the scan as a "last seen" update (fire-and-forget)
+        sb.from('asset_equipment')
+          .update({ last_seen_date: new Date().toISOString(),
+                    last_seen_location: 'QR Scan' })
+          .eq('asset_id', assetId);
+
+        showAsset(data);
+    } else {
+        showRegisterForm(assetId);
+    }
+}
+
+async function submitRegister(evt) {
+    evt.preventDefault();
+    const fd = new FormData(evt.target);
+    const assetId = fd.get('_asset_id');
+
+    const payload = {
+        asset_id:               assetId,
+        asset_type:             fd.get('asset_type'),
+        make:                   fd.get('make') || null,
+        model:                  fd.get('model') || null,
+        serial_number:          fd.get('serial_number') || null,
+        description:            fd.get('description') || null,
+        purchase_date:          fd.get('purchase_date') || null,
+        purchase_price:         fd.get('purchase_price') ? parseFloat(fd.get('purchase_price')) : null,
+        vendor:                 fd.get('vendor') || null,
+        condition:              fd.get('condition'),
+        assigned_to:            fd.get('assigned_to') || null,
+        home_location:          fd.get('home_location'),
+        calibration_required:   fd.get('calibration_required') === 'on',
+        last_calibration_date:  fd.get('last_calibration_date') || null,
+        next_calibration_date:  fd.get('next_calibration_date') || null,
+        calibration_provider:   fd.get('calibration_provider') || null,
+        notes:                  fd.get('notes') || null,
+        created_by:             fd.get('created_by'),
+        checkout_status:        'available',
+    };
+
+    const btn = document.getElementById('reg-submit');
+    btn.disabled = true; btn.textContent = 'Registering...';
+
+    const { data, error } = await sb
+        .from('asset_equipment')
+        .insert(payload)
+        .select()
+        .single();
+
+    if (error) {
+        setAlert('Error registering asset: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = `Register ${assetId}`;
+    } else {
+        showAsset(data);
+    }
+}
+
+async function submitCheckout(evt) {
+    evt.preventDefault();
+    const fd  = new FormData(evt.target);
+    const now = new Date().toISOString();
+    const assetId = _asset.asset_id;
+
+    const btn = document.getElementById('co-submit');
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    const { error: upErr } = await sb
+        .from('asset_equipment')
+        .update({
+            checkout_status:     'checked-out',
+            checked_out_to:      fd.get('checked_out_to'),
+            checkout_date:       fd.get('checkout_date') ? new Date(fd.get('checkout_date')).toISOString() : now,
+            checkout_site:       fd.get('checkout_site') || null,
+            expected_return:     fd.get('expected_return') || null,
+            last_checkout_notes: fd.get('notes') || null,
+            last_seen_location:  fd.get('checkout_site') || null,
+            last_seen_date:      now,
+            last_seen_by:        fd.get('checked_out_to'),
+        })
+        .eq('asset_id', assetId);
+
+    if (upErr) { setAlert('Error: ' + upErr.message, 'error'); btn.disabled = false; btn.textContent = 'Confirm Checkout'; return; }
+
+    // Write to log (non-blocking)
+    sb.from('asset_checkout_log').insert({
+        asset_id:       assetId,
+        checked_out_to: fd.get('checked_out_to'),
+        checkout_date:  new Date(fd.get('checkout_date') || now).toISOString(),
+        checkout_site:  fd.get('checkout_site') || null,
+        notes:          fd.get('notes') || null,
+    });
+
+    loadAsset(assetId);
+}
+
+async function submitCheckin(evt) {
+    evt.preventDefault();
+    const fd  = new FormData(evt.target);
+    const now = new Date().toISOString();
+    const assetId = _asset.asset_id;
+
+    const btn = document.getElementById('ci-submit');
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    const update = {
+        checkout_status: 'available',
+        checked_out_to:  null,
+        checkout_date:   null,
+        checkout_site:   null,
+        expected_return: null,
+        condition:       fd.get('condition'),
+        last_seen_location: fd.get('return_location') || null,
+        last_seen_date:  now,
+        last_seen_by:    fd.get('returned_by'),
+    };
+    if (fd.get('return_location')) update.home_location = fd.get('return_location');
+
+    const { error } = await sb.from('asset_equipment').update(update).eq('asset_id', assetId);
+    if (error) { setAlert('Error: ' + error.message, 'error'); btn.disabled = false; btn.textContent = 'Confirm Check In'; return; }
+
+    // Close the open checkout log entry
+    sb.from('asset_checkout_log')
+      .update({ return_date: now, notes: fd.get('notes') || null })
+      .eq('asset_id', assetId)
+      .is('return_date', null);
+
+    loadAsset(assetId);
+}
+
+async function submitReassign(evt) {
+    evt.preventDefault();
+    const fd = new FormData(evt.target);
+    const assetId = _asset.asset_id;
+    const newOwner = fd.get('assigned_to').trim() || null;
+    const today = new Date().toISOString().slice(0,10);
+
+    const btn = document.getElementById('ra-submit');
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    const update = {
+        assigned_to:    newOwner,
+        assigned_date:  newOwner ? today : null,
+        home_location:  fd.get('home_location').trim() || _asset.home_location || null,
+        // Append the reason to notes so there's an audit trail
+        notes: [
+            _asset.notes,
+            `[${new Date().toLocaleDateString()}] Assignment changed by ${fd.get('changed_by')}` +
+            (newOwner ? ` — assigned to ${newOwner}` : ' — unassigned') +
+            (fd.get('reason') ? `: ${fd.get('reason')}` : '')
+        ].filter(Boolean).join('\n')
+    };
+
+    const { error } = await sb.from('asset_equipment').update(update).eq('asset_id', assetId);
+    if (error) {
+        setAlert('Error: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = 'Save Assignment';
+        return;
+    }
+    loadAsset(assetId);
+}
+
+async function submitTransfer(evt) {
+    evt.preventDefault();
+    const fd  = new FormData(evt.target);
+    const now = new Date().toISOString();
+    const assetId = _asset.asset_id;
+
+    const btn = document.getElementById('tr-submit');
+    btn.disabled = true; btn.textContent = 'Saving...';
+
+    const transferDate = fd.get('transfer_date')
+        ? new Date(fd.get('transfer_date')).toISOString()
+        : now;
+
+    // 1. Close the current open checkout log entry
+    await sb.from('asset_checkout_log')
+        .update({ return_date: transferDate })
+        .eq('asset_id', assetId)
+        .is('return_date', null);
+
+    // 2. Update the equipment record with the new person
+    const { error } = await sb.from('asset_equipment').update({
+        checked_out_to:      fd.get('transfer_to'),
+        checkout_date:       transferDate,
+        checkout_site:       fd.get('checkout_site') || null,
+        expected_return:     fd.get('expected_return') || null,
+        last_checkout_notes: fd.get('notes') || null,
+        checkout_status:     'checked-out',
+        last_seen_location:  fd.get('checkout_site') || null,
+        last_seen_date:      now,
+        last_seen_by:        fd.get('transfer_to'),
+    }).eq('asset_id', assetId);
+
+    if (error) {
+        setAlert('Error: ' + error.message, 'error');
+        btn.disabled = false; btn.textContent = 'Confirm Transfer';
+        return;
+    }
+
+    // 3. Open a new checkout log entry for the new person
+    sb.from('asset_checkout_log').insert({
+        asset_id:       assetId,
+        checked_out_to: fd.get('transfer_to'),
+        checkout_date:  transferDate,
+        checkout_site:  fd.get('checkout_site') || null,
+        notes:          fd.get('notes') || `Transferred from ${_asset.checked_out_to || 'previous holder'}`,
+    });
+
+    loadAsset(assetId);
+}
+
+async function submitUpdate(evt) {
+    evt.preventDefault();
+    const fd = new FormData(evt.target);
+    const assetId = _asset.asset_id;
+
+    const update = {
+        serial_number:        fd.get('serial_number') || null,
+        assigned_to:          fd.get('assigned_to') || null,
+        home_location:        fd.get('home_location') || null,
+        condition:            fd.get('condition'),
+        notes:                fd.get('notes') || null,
+    };
+    if (_asset.calibration_required) {
+        update.last_calibration_date = fd.get('last_calibration_date') || null;
+        update.next_calibration_date = fd.get('next_calibration_date') || null;
+    }
+    // Admins can correct hardware identity fields — DB trigger also enforces this
+    if (isAdmin()) {
+        if (fd.get('asset_type')) update.asset_type = fd.get('asset_type');
+        if (fd.get('make'))       update.make       = fd.get('make').trim() || null;
+        if (fd.get('model'))      update.model      = fd.get('model').trim() || null;
+    }
+
+    const { error } = await sb.from('asset_equipment').update(update).eq('asset_id', assetId);
+    if (error) { setAlert('Error: ' + error.message, 'error'); return; }
+    loadAsset(assetId);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Auth + Init
+// ────────────────────────────────────────────────────────────────
+function handleAuthedSession(session) {
+    _session = session; _user = session.user;
+    const id = getIdFromUrl();
+    if (id) loadAsset(id); else showSearch();
+}
+
+// Handle OAuth redirect-back and sign-out events
+sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN') {
+        if (session.user.email.endsWith(PGCIS_DOMAIN)) {
+            // Clean OAuth params from URL so they don't linger (preserves ?id=)
+            const id = getIdFromUrl();
+            const cleanUrl = window.location.pathname + (id ? `?id=${encodeURIComponent(id)}` : '');
+            window.history.replaceState({}, '', cleanUrl);
+            handleAuthedSession(session);
+        } else {
+            // Signed in but not a PGCIS account — sign them back out
+            await sb.auth.signOut();
+            showLostDevice(getIdFromUrl());
+        }
+    } else if (event === 'SIGNED_OUT') {
+        _session = null; _user = null;
+        showLostDevice(getIdFromUrl());
+    }
+});
+
+(async function init() {
+    const { data: { session } } = await sb.auth.getSession();
+
+    if (session && session.user.email.endsWith(PGCIS_DOMAIN)) {
+        // Already logged in with a valid PGCIS account
+        handleAuthedSession(session);
+    } else if (session) {
+        // Session exists but wrong email domain — boot them out
+        await sb.auth.signOut();
+        showLostDevice(getIdFromUrl());
+    } else {
+        // No session. If there's a ?code= in the URL, Supabase is mid-OAuth
+        // exchange and onAuthStateChange will fire SIGNED_IN shortly — keep
+        // the spinner up. Otherwise show the lost/found screen.
+        const isOAuthCallback = new URLSearchParams(window.location.search).has('code');
+        if (!isOAuthCallback) showLostDevice(getIdFromUrl());
+    }
+})();
+</script>
+</body>
+</html>
