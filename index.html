@@ -3,8 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://pvrinomtszbguydmyiqc.supabase.co https://accounts.google.com; img-src 'self' data:; frame-ancestors 'none';">
     <title>PGCIS Asset Registry</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- Pinned to 2.103.3 with SRI hash — update both when upgrading the library.
+         To regenerate: curl -s https://cdn.jsdelivr.net/npm/@supabase/supabase-js@VERSION/dist/umd/supabase.js | openssl dgst -sha384 -binary | openssl base64 -A -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.103.3/dist/umd/supabase.js"
+            integrity="sha384-hCWGwlkWlatZlBB+xRL7caQ0wei4AIvA80dQT3CEhafaMinAJQdfdb99y48Oai+Q"
+            crossorigin="anonymous"></script>
     <style>
         :root {
             --blue:        #2e4387;
@@ -166,10 +171,11 @@
 
 <script>
 // ================================================================
-//  CONFIGURATION — fill in your Supabase project details
+//  CONFIGURATION
+//  Wired to cx-agent Supabase project (shared with Cx agent tooling).
 // ================================================================
-const SUPABASE_URL      = 'https://YOUR_PROJECT_REF.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY_HERE';
+const SUPABASE_URL      = 'https://pvrinomtszbguydmyiqc.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB2cmlub210c3piZ3V5ZG15aXFjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc5ODU0MTAsImV4cCI6MjA4MzU2MTQxMH0.bG6cumnrKMtUdlOsGSyq-5hMJa-E6-zml0ALf0ylHmo';
 
 // Lost / found device contact info (shown to anyone without a PGCIS login)
 const CONTACT_PHONE   = '(512) 000-0000';      // UPDATE: PGCIS main phone
@@ -187,6 +193,66 @@ const ADMIN_EMAILS = [
     'erik@pgcis.com',
 ];
 // ================================================================
+
+// ----------------------------------------------------------------
+// Deploy-config guard — runs immediately on page load.
+// If SUPABASE_URL has been filled in but the CSP connect-src still
+// has the placeholder, the app stops and shows a clear error so the
+// mismatch can't be missed during setup.
+// ----------------------------------------------------------------
+(function checkDeployConfig() {
+    const credsSet = !SUPABASE_URL.includes('YOUR_PROJECT_REF')
+                  && !SUPABASE_ANON_KEY.includes('YOUR_ANON_KEY_HERE');
+    if (!credsSet) return; // not yet configured — nothing to validate
+
+    const csp     = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+    const cspText = csp ? csp.getAttribute('content') : '';
+    if (!cspText.includes('YOUR_PROJECT_REF')) return; // CSP already updated — all good
+
+    // Credentials filled in but CSP still has placeholder: block and explain
+    document.getElementById('app').innerHTML = `
+        <div style="max-width:520px;margin:48px auto;padding:0 18px;font-family:-apple-system,sans-serif">
+            <div style="background:#fee2e2;border:2px solid #ef4444;border-radius:10px;padding:22px">
+                <div style="font-size:15px;font-weight:700;color:#991b1b;margin-bottom:10px">
+                    Setup incomplete — CSP not updated
+                </div>
+                <p style="font-size:13px;color:#7f1d1d;line-height:1.6;margin:0 0 12px">
+                    <code>SUPABASE_URL</code> has been filled in, but the
+                    <code>Content-Security-Policy</code> meta tag still contains
+                    the <code>YOUR_PROJECT_REF</code> placeholder.
+                </p>
+                <p style="font-size:13px;color:#7f1d1d;line-height:1.6;margin:0 0 12px">
+                    In <strong>index.html</strong>, find line 8 and replace
+                    <code>YOUR_PROJECT_REF</code> in the <code>connect-src</code>
+                    directive with your actual Supabase project ref
+                    (the same value you used in <code>SUPABASE_URL</code>):
+                </p>
+                <code style="display:block;background:#fecaca;padding:8px 10px;border-radius:6px;
+                             font-size:12px;line-height:1.6;word-break:break-all">
+                    connect-src https://&lt;YOUR-PROJECT-REF&gt;.supabase.co https://accounts.google.com
+                </code>
+                <p style="font-size:12px;color:#991b1b;margin:10px 0 0">
+                    This restricts which servers the app can contact, preventing
+                    data from being sent to third-party Supabase projects.
+                </p>
+            </div>
+        </div>`;
+    throw new Error('Deploy config incomplete: update connect-src in CSP to match SUPABASE_URL');
+})();
+
+// ----------------------------------------------------------------
+// HTML escaping — applied to ALL database-sourced values before
+// they are injected into innerHTML to prevent stored XSS.
+// ----------------------------------------------------------------
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 const { createClient } = window.supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -239,20 +305,20 @@ function render(html) { document.getElementById('app').innerHTML = html; }
 
 function setAlert(msg, type) {
     const el = document.getElementById('form-alert');
-    if (el) el.innerHTML = msg ? `<div class="alert alert-${type}">${msg}</div>` : '';
+    if (el) el.innerHTML = msg ? `<div class="alert alert-${escapeHtml(type)}">${escapeHtml(msg)}</div>` : '';
 }
 
 function header(assetId) {
     const userBlock = _user ? `
         <div class="hdr-user">
-            ${_user.email}
+            ${escapeHtml(_user.email)}
             <button class="hdr-signout" onclick="signOut()">Sign Out</button>
         </div>` : '';
     return `<div class="hdr">
         <div><div class="hdr-title">PGCIS Asset Registry</div>
              <div class="hdr-sub">PACHYDERM GLOBAL</div></div>
         <div class="hdr-right">
-            ${assetId ? `<div class="hdr-badge">${assetId}</div>` : ''}
+            ${assetId ? `<div class="hdr-badge">${escapeHtml(assetId)}</div>` : ''}
             ${userBlock}
         </div>
     </div>`;
@@ -281,32 +347,32 @@ function showAsset(asset) {
                 </div>
                 <div class="row">
                     <span class="row-label">Type</span>
-                    <span class="row-val">${asset.asset_type || '—'}</span>
+                    <span class="row-val">${escapeHtml(asset.asset_type) || '—'}</span>
                 </div>
                 <div class="row">
                     <span class="row-label">Make / Model</span>
-                    <span class="row-val">${[asset.make, asset.model].filter(Boolean).join(' ') || '—'}</span>
+                    <span class="row-val">${[escapeHtml(asset.make), escapeHtml(asset.model)].filter(Boolean).join(' ') || '—'}</span>
                 </div>
                 <div class="row">
                     <span class="row-label">Serial Number</span>
-                    <span class="row-val mono">${asset.serial_number || '—'}</span>
+                    <span class="row-val mono">${escapeHtml(asset.serial_number) || '—'}</span>
                 </div>
                 <div class="row">
                     <span class="row-label">Assigned To</span>
-                    <span class="row-val">${asset.assigned_to || 'Unassigned'}</span>
+                    <span class="row-val">${escapeHtml(asset.assigned_to) || 'Unassigned'}</span>
                 </div>
                 <div class="row">
                     <span class="row-label">Home Location</span>
-                    <span class="row-val">${asset.home_location || '—'}</span>
+                    <span class="row-val">${escapeHtml(asset.home_location) || '—'}</span>
                 </div>
                 <div class="row">
                     <span class="row-label">Condition</span>
-                    <span class="row-val">${asset.condition || '—'}</span>
+                    <span class="row-val">${escapeHtml(asset.condition) || '—'}</span>
                 </div>
                 ${asset.description ? `
                 <div class="row">
                     <span class="row-label">Description</span>
-                    <span class="row-val">${asset.description}</span>
+                    <span class="row-val">${escapeHtml(asset.description)}</span>
                 </div>` : ''}
             </div>
 
@@ -315,7 +381,7 @@ function showAsset(asset) {
                 <div class="card-title">Currently Checked Out</div>
                 <div class="row">
                     <span class="row-label">Checked Out To</span>
-                    <span class="row-val">${asset.checked_out_to || '—'}</span>
+                    <span class="row-val">${escapeHtml(asset.checked_out_to) || '—'}</span>
                 </div>
                 <div class="row">
                     <span class="row-label">Checkout Date</span>
@@ -323,7 +389,7 @@ function showAsset(asset) {
                 </div>
                 <div class="row">
                     <span class="row-label">Site / Project</span>
-                    <span class="row-val">${asset.checkout_site || '—'}</span>
+                    <span class="row-val">${escapeHtml(asset.checkout_site) || '—'}</span>
                 </div>
                 <div class="row">
                     <span class="row-label">Expected Return</span>
@@ -332,7 +398,7 @@ function showAsset(asset) {
                 ${asset.last_checkout_notes ? `
                 <div class="row">
                     <span class="row-label">Notes</span>
-                    <span class="row-val">${asset.last_checkout_notes}</span>
+                    <span class="row-val">${escapeHtml(asset.last_checkout_notes)}</span>
                 </div>` : ''}
             </div>` : ''}
 
@@ -349,14 +415,14 @@ function showAsset(asset) {
                 </div>
                 <div class="row">
                     <span class="row-label">Provider</span>
-                    <span class="row-val">${asset.calibration_provider || '—'}</span>
+                    <span class="row-val">${escapeHtml(asset.calibration_provider) || '—'}</span>
                 </div>
             </div>` : ''}
 
             ${asset.notes ? `
             <div class="card">
                 <div class="card-title">Notes</div>
-                <p style="font-size:13px;color:var(--muted);white-space:pre-wrap">${asset.notes}</p>
+                <p style="font-size:13px;color:var(--muted);white-space:pre-wrap">${escapeHtml(asset.notes)}</p>
             </div>` : ''}
 
             <div class="btn-stack">
@@ -371,7 +437,7 @@ function showAsset(asset) {
             </div>
 
             <div class="foot">
-                Registered ${fmtDate(asset.created_at)} by ${asset.created_by || 'unknown'}
+                Registered ${fmtDate(asset.created_at)} by ${escapeHtml(asset.created_by) || 'unknown'}
             </div>
         </div>
     `);
@@ -383,7 +449,7 @@ function showRegisterForm(assetId) {
         <div class="wrap">
             <div class="hero">
                 <div style="font-size:13px;color:var(--muted)">Unregistered tag</div>
-                <div class="hero-id">${assetId}</div>
+                <div class="hero-id">${escapeHtml(assetId)}</div>
                 <div class="hero-sub">Fill out the form below to register this equipment.</div>
             </div>
 
@@ -544,14 +610,10 @@ function showRegisterForm(assetId) {
                         <label>Notes</label>
                         <textarea name="notes" placeholder="Accessories, special handling, known issues..."></textarea>
                     </div>
-                    <div class="fg">
-                        <label>Registered By <span class="req">*</span></label>
-                        <input name="created_by" placeholder="Your name" required>
-                    </div>
                 </div>
 
-                <input type="hidden" name="_asset_id" value="${assetId}">
-                <button type="submit" class="btn btn-primary" id="reg-submit">Register ${assetId}</button>
+                <input type="hidden" name="_asset_id" value="${escapeHtml(assetId)}">
+                <button type="submit" class="btn btn-primary" id="reg-submit">Register ${escapeHtml(assetId)}</button>
             </form>
         </div>
     `);
@@ -567,8 +629,8 @@ function showCheckoutForm() {
         <div class="wrap">
             <div class="hero">
                 <div style="font-size:13px;color:var(--muted)">Checkout Form</div>
-                <div class="hero-id">${_asset.asset_id}</div>
-                <div class="hero-sub">${[_asset.make, _asset.model].filter(Boolean).join(' ')}</div>
+                <div class="hero-id">${escapeHtml(_asset.asset_id)}</div>
+                <div class="hero-sub">${[escapeHtml(_asset.make), escapeHtml(_asset.model)].filter(Boolean).join(' ')}</div>
             </div>
 
             <div id="form-alert"></div>
@@ -616,8 +678,8 @@ function showCheckinForm() {
         <div class="wrap">
             <div class="hero">
                 <div style="font-size:13px;color:var(--muted)">Check In</div>
-                <div class="hero-id">${_asset.asset_id}</div>
-                <div class="hero-sub">Checked out to: ${_asset.checked_out_to || '—'}</div>
+                <div class="hero-id">${escapeHtml(_asset.asset_id)}</div>
+                <div class="hero-sub">Checked out to: ${escapeHtml(_asset.checked_out_to) || '—'}</div>
             </div>
 
             <div id="form-alert"></div>
@@ -721,11 +783,11 @@ function showUpdateForm() {
                     <div class="row2">
                         <div class="fg">
                             <label>Make</label>
-                            <input name="make" value="${a.make || ''}">
+                            <input name="make" value="${escapeHtml(a.make)}">
                         </div>
                         <div class="fg">
                             <label>Model</label>
-                            <input name="model" value="${a.model || ''}">
+                            <input name="model" value="${escapeHtml(a.model)}">
                         </div>
                     </div>
                     <p style="font-size:11px;color:#92400e;line-height:1.5;margin-top:4px">
@@ -740,18 +802,18 @@ function showUpdateForm() {
                     </div>
                     <div class="locked-row">
                         <span class="locked-lbl">Type</span>
-                        <span class="locked-val">${a.asset_type}<span class="lock-pill">locked</span></span>
+                        <span class="locked-val">${escapeHtml(a.asset_type)}<span class="lock-pill">locked</span></span>
                     </div>
                     <div class="locked-row">
                         <span class="locked-lbl">Make</span>
-                        <span class="locked-val">${a.make || '—'}<span class="lock-pill">locked</span></span>
+                        <span class="locked-val">${escapeHtml(a.make) || '—'}<span class="lock-pill">locked</span></span>
                     </div>
                     <div class="locked-row" style="border-bottom:none">
                         <span class="locked-lbl">Model</span>
-                        <span class="locked-val">${a.model || '—'}<span class="lock-pill">locked</span></span>
+                        <span class="locked-val">${escapeHtml(a.model) || '—'}<span class="lock-pill">locked</span></span>
                     </div>
                     <p style="font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5">
-                        Tag <strong>${a.asset_id}</strong> is permanently linked to this equipment.
+                        Tag <strong>${escapeHtml(a.asset_id)}</strong> is permanently linked to this equipment.
                         These fields cannot be changed. Contact an admin to correct a registration error.
                     </p>
                 </div>
@@ -762,16 +824,16 @@ function showUpdateForm() {
 
                     <div class="fg">
                         <label>Serial Number <span style="font-weight:400;font-size:11px">(correctable)</span></label>
-                        <input name="serial_number" value="${a.serial_number || ''}" style="font-family:monospace">
+                        <input name="serial_number" value="${escapeHtml(a.serial_number)}" style="font-family:monospace">
                     </div>
                     <div class="row2">
                         <div class="fg">
                             <label>Assigned To</label>
-                            <input name="assigned_to" value="${a.assigned_to || ''}">
+                            <input name="assigned_to" value="${escapeHtml(a.assigned_to)}">
                         </div>
                         <div class="fg">
                             <label>Home Location</label>
-                            <input name="home_location" value="${a.home_location || ''}">
+                            <input name="home_location" value="${escapeHtml(a.home_location)}">
                         </div>
                     </div>
                     <div class="fg">
@@ -789,20 +851,16 @@ function showUpdateForm() {
                     <div class="row2">
                         <div class="fg">
                             <label>Last Calibrated</label>
-                            <input type="date" name="last_calibration_date" value="${a.last_calibration_date || ''}">
+                            <input type="date" name="last_calibration_date" value="${escapeHtml(a.last_calibration_date)}">
                         </div>
                         <div class="fg">
                             <label>Calibration Due</label>
-                            <input type="date" name="next_calibration_date" value="${a.next_calibration_date || ''}">
+                            <input type="date" name="next_calibration_date" value="${escapeHtml(a.next_calibration_date)}">
                         </div>
                     </div>` : ''}
                     <div class="fg">
                         <label>Notes</label>
-                        <textarea name="notes">${a.notes || ''}</textarea>
-                    </div>
-                    <div class="fg">
-                        <label>Updated By <span class="req">*</span></label>
-                        <input name="updated_by" placeholder="Your name" required>
+                        <textarea name="notes">${escapeHtml(a.notes)}</textarea>
                     </div>
                 </div>
 
@@ -824,12 +882,12 @@ function showReassignForm() {
         <div class="wrap">
             <div class="hero">
                 <div style="font-size:13px;color:var(--muted)">Reassign / Unassign</div>
-                <div class="hero-id">${a.asset_id}</div>
-                <div class="hero-sub">${[a.make, a.model].filter(Boolean).join(' ')}</div>
+                <div class="hero-id">${escapeHtml(a.asset_id)}</div>
+                <div class="hero-sub">${[escapeHtml(a.make), escapeHtml(a.model)].filter(Boolean).join(' ')}</div>
             </div>
 
             <div class="alert alert-info">
-                Currently assigned to: <strong>${a.assigned_to || 'Nobody (unassigned)'}</strong>.
+                Currently assigned to: <strong>${escapeHtml(a.assigned_to) || 'Nobody (unassigned)'}</strong>.
                 Enter a new name below to reassign, or clear the field to unassign.
             </div>
 
@@ -839,13 +897,13 @@ function showReassignForm() {
                 <div class="card">
                     <div class="fg">
                         <label>Assign To</label>
-                        <input name="assigned_to" value="${a.assigned_to || ''}"
+                        <input name="assigned_to" value="${escapeHtml(a.assigned_to)}"
                                placeholder="Enter name, or leave blank to unassign"
                                id="ra-name-input">
                     </div>
                     <div class="fg">
                         <label>New Home Location</label>
-                        <input name="home_location" value="${a.home_location || ''}"
+                        <input name="home_location" value="${escapeHtml(a.home_location)}"
                                placeholder="Where will this equipment normally live?">
                     </div>
                     <div class="fg">
@@ -878,13 +936,13 @@ function showTransferForm() {
         <div class="wrap">
             <div class="hero">
                 <div style="font-size:13px;color:var(--muted)">Transfer Checkout</div>
-                <div class="hero-id">${a.asset_id}</div>
-                <div class="hero-sub">${[a.make, a.model].filter(Boolean).join(' ')}</div>
+                <div class="hero-id">${escapeHtml(a.asset_id)}</div>
+                <div class="hero-sub">${[escapeHtml(a.make), escapeHtml(a.model)].filter(Boolean).join(' ')}</div>
             </div>
 
             <div class="alert alert-warn">
-                Currently checked out to: <strong>${a.checked_out_to || '—'}</strong>
-                ${a.checkout_site ? ` at ${a.checkout_site}` : ''}.
+                Currently checked out to: <strong>${escapeHtml(a.checked_out_to) || '—'}</strong>
+                ${a.checkout_site ? ` at ${escapeHtml(a.checkout_site)}` : ''}.
                 This will close that checkout and open a new one immediately.
             </div>
 
@@ -898,7 +956,7 @@ function showTransferForm() {
                     </div>
                     <div class="fg">
                         <label>New Site / Project</label>
-                        <input name="checkout_site" value="${a.checkout_site || ''}"
+                        <input name="checkout_site" value="${escapeHtml(a.checkout_site)}"
                                placeholder="e.g. CoreSci Denton, Austin Office">
                     </div>
                     <div class="row2">
@@ -951,7 +1009,7 @@ function showError(msg) {
     render(`
         ${header(null)}
         <div class="wrap">
-            <div class="alert alert-error" style="margin-top:20px">${msg}</div>
+            <div class="alert alert-error" style="margin-top:20px">${escapeHtml(msg)}</div>
             <button class="btn btn-ghost" onclick="showSearch()">Back</button>
         </div>
     `);
@@ -983,15 +1041,15 @@ function showLostDevice(assetId) {
             <div class="contact-card">
                 <div class="contact-row">
                     <span class="contact-lbl">Phone</span>
-                    <span class="contact-val">${CONTACT_PHONE}</span>
+                    <span class="contact-val">${escapeHtml(CONTACT_PHONE)}</span>
                 </div>
                 <div class="contact-row">
                     <span class="contact-lbl">Email</span>
-                    <span class="contact-val">${CONTACT_EMAIL}</span>
+                    <span class="contact-val">${escapeHtml(CONTACT_EMAIL)}</span>
                 </div>
                 <div class="contact-row">
                     <span class="contact-lbl">Return to</span>
-                    <span class="contact-val">${CONTACT_ADDRESS}</span>
+                    <span class="contact-val">${escapeHtml(CONTACT_ADDRESS)}</span>
                 </div>
             </div>
             <div class="emp-signin">
@@ -1086,7 +1144,7 @@ async function submitRegister(evt) {
         next_calibration_date:  fd.get('next_calibration_date') || null,
         calibration_provider:   fd.get('calibration_provider') || null,
         notes:                  fd.get('notes') || null,
-        created_by:             fd.get('created_by'),
+        created_by:             _user ? _user.email : 'unknown',  // set from authenticated session; DB trigger also enforces this
         checkout_status:        'available',
     };
 
@@ -1133,13 +1191,21 @@ async function submitCheckout(evt) {
 
     if (upErr) { setAlert('Error: ' + upErr.message, 'error'); btn.disabled = false; btn.textContent = 'Confirm Checkout'; return; }
 
-    // Write to log (non-blocking)
+    // Close any orphaned open log entries before creating the new one.
+    // Normally there are none, but a previous failed check-in could leave one open.
+    await sb.from('asset_checkout_log')
+        .update({ return_date: new Date(fd.get('checkout_date') || now).toISOString() })
+        .eq('asset_id', assetId)
+        .is('return_date', null);
+
+    // Write new log entry
     sb.from('asset_checkout_log').insert({
-        asset_id:       assetId,
-        checked_out_to: fd.get('checked_out_to'),
-        checkout_date:  new Date(fd.get('checkout_date') || now).toISOString(),
-        checkout_site:  fd.get('checkout_site') || null,
-        notes:          fd.get('notes') || null,
+        asset_id:            assetId,
+        checked_out_to:      fd.get('checked_out_to'),
+        checkout_date:       new Date(fd.get('checkout_date') || now).toISOString(),
+        checkout_site:       fd.get('checkout_site') || null,
+        notes:               fd.get('notes') || null,
+        performed_by_email:  _user ? _user.email : null,
     });
 
     loadAsset(assetId);
@@ -1170,9 +1236,10 @@ async function submitCheckin(evt) {
     const { error } = await sb.from('asset_equipment').update(update).eq('asset_id', assetId);
     if (error) { setAlert('Error: ' + error.message, 'error'); btn.disabled = false; btn.textContent = 'Confirm Check In'; return; }
 
-    // Close the open checkout log entry
+    // Close the open checkout log entry, recording who authenticated for the return
     sb.from('asset_checkout_log')
-      .update({ return_date: now, notes: fd.get('notes') || null })
+      .update({ return_date: now, notes: fd.get('notes') || null,
+                returned_by_email: _user ? _user.email : null })
       .eq('asset_id', assetId)
       .is('return_date', null);
 
@@ -1193,10 +1260,12 @@ async function submitReassign(evt) {
         assigned_to:    newOwner,
         assigned_date:  newOwner ? today : null,
         home_location:  fd.get('home_location').trim() || _asset.home_location || null,
-        // Append the reason to notes so there's an audit trail
+        // Append the reason to notes so there's an audit trail.
+        // auth: records the authenticated user's email so the entry cannot be forged.
         notes: [
             _asset.notes,
             `[${new Date().toLocaleDateString()}] Assignment changed by ${fd.get('changed_by')}` +
+            (_user ? ` (auth: ${_user.email})` : '') +
             (newOwner ? ` — assigned to ${newOwner}` : ' — unassigned') +
             (fd.get('reason') ? `: ${fd.get('reason')}` : '')
         ].filter(Boolean).join('\n')
@@ -1251,11 +1320,12 @@ async function submitTransfer(evt) {
 
     // 3. Open a new checkout log entry for the new person
     sb.from('asset_checkout_log').insert({
-        asset_id:       assetId,
-        checked_out_to: fd.get('transfer_to'),
-        checkout_date:  transferDate,
-        checkout_site:  fd.get('checkout_site') || null,
-        notes:          fd.get('notes') || `Transferred from ${_asset.checked_out_to || 'previous holder'}`,
+        asset_id:            assetId,
+        checked_out_to:      fd.get('transfer_to'),
+        checkout_date:       transferDate,
+        checkout_site:       fd.get('checkout_site') || null,
+        notes:               fd.get('notes') || `Transferred from ${_asset.checked_out_to || 'previous holder'}`,
+        performed_by_email:  _user ? _user.email : null,
     });
 
     loadAsset(assetId);
