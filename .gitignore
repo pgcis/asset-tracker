@@ -1,0 +1,7 @@
+# Obsidian per-user layout (cursor/tab/pane state) — must not sync across machines
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/workspaces.json
+
+# macOS
+.DS_Store
