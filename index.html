@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src https://pvrinomtszbguydmyiqc.supabase.co https://accounts.google.com; img-src 'self' data:; frame-ancestors 'none';">
     <title>PGCIS Asset Registry</title>
     <!-- Pinned to 2.103.3 with SRI hash — update both when upgrading the library.
@@ -643,7 +644,7 @@ function showCheckoutForm() {
                     </div>
                     <div class="fg">
                         <label>Site / Project</label>
-                        <input name="checkout_site" placeholder="e.g. CoreSci Denton, Austin Office">
+                        <input name="checkout_site" placeholder="e.g. site name or office">
                     </div>
                     <div class="row2">
                         <div class="fg">
@@ -957,7 +958,7 @@ function showTransferForm() {
                     <div class="fg">
                         <label>New Site / Project</label>
                         <input name="checkout_site" value="${escapeHtml(a.checkout_site)}"
-                               placeholder="e.g. CoreSci Denton, Austin Office">
+                               placeholder="e.g. site name or office">
                     </div>
                     <div class="row2">
                         <div class="fg">
