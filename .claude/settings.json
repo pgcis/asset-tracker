@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "pgcis-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "pgcis/pgcis-plugins"
+      },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "pgcis-general@pgcis-plugins": true
+  }
+}
